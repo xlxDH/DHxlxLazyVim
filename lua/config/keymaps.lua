@@ -62,10 +62,10 @@ map({ "n", "v" }, "<leader><leader>h", function()
   hop.hint_camel_case({ direction = directions.BEFORE_CURSOR })
 end, { desc = "Go to previous any begining of words" })
 
--- leader leader f
-map({ "n", "v" }, "<leader><leader>h", function()
-  hop.hint_camel_case({ direction = directions.BEFORE_CURSOR })
-end, { desc = "Go to previous any begining of words" })
+-- leader leader f：单字符向前跳（类似 vim 的 f；h 为向后驼峰词）
+map({ "n", "v" }, "<leader><leader>f", function()
+  hop.hint_char1({ direction = directions.AFTER_CURSOR, current_line_only = false })
+end, { desc = "Hop to char after cursor" })
 
 -- suppress useless warning here
 ---@diagnostic disable: missing-fields
@@ -135,7 +135,7 @@ map("n", "<leader>fs", "<cmd>Telescope persisted<cr>", { desc = "Search history 
 map("n", "<leader>h", "<cmd>noh<cr>", { desc = "Cancel highlight" })
 
 -- change filtetype between html and htmldjango
-map("n", "<leader><leader>d", "<cmd>set filetype=htmldjango<cr>", { desc = "Cancel highlight" })
+map("n", "<leader><leader>d", "<cmd>set filetype=htmldjango<cr>", { desc = "Set filetype to htmldjango" })
 
 -- toggle current filetype between html and htmldjango, this is mainly used to toggle highlight of treesitter between html and htmldjango
 local function toggle_between_html_and_dj()

@@ -1,5 +1,6 @@
 -- bootstrap lazy.nvim, LazyVim and your plugins
 require("config.lazy")
+require("config.lsp-health-fix")
 
 require("fany.fanykeymaps")
 require("fany.fanyconfig")

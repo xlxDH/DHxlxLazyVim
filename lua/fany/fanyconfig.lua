@@ -15,14 +15,4 @@ vim.api.nvim_command("highlight HopNextKey guifg=#FF7369 guibg=none gui=none cte
 -- 解决 python 在定义函数参数时按下 : 会自动缩进的问题
 vim.api.nvim_command("set indentkeys-=<:>")
 
--- I dont know why write powershell_es config here will be effective for codeFormatting, but in lspconfig it will not work
-if not vim.g.vscode then
-  require("lspconfig").powershell_es.setup({
-    filetypes = { "ps1", "psm1", "psd1" },
-    bundle_path = "~/AppData/Local/nvim-data/mason/packages/powershell-editor-services",
-    settings = { powershell = { codeFormatting = { Preset = "OTBS" } } },
-    init_options = {
-      enableProfileLoading = false,
-    },
-  })
-end
+-- powershell_es 由 lua/plugins/nvim-lspconfig.lua 在 LazyVim LSP 管线中配置，避免启动阶段直接 require("lspconfig")

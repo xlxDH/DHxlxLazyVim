@@ -1,82 +1,136 @@
 -- ~/.config/nvim/lua/plugins/clangd.lua
+-- 使用 blink.cmp（与 LazyVim 默认一致），不再单独引入 nvim-cmp
+
+local function first_existing_path(paths)
+  for _, path in ipairs(paths) do
+    if vim.fn.executable(path) == 1 or vim.fn.isdirectory(path) == 1 then
+      return path
+    end
+  end
+end
+
+local function detect_mingw_libstdcpp_includes()
+  local roots = {
+    "C:/msys64/ucrt64/include/c++",
+    "C:/msys64/mingw64/include/c++",
+    "C:/msys64/clang64/include/c++",
+  }
+  for _, root in ipairs(roots) do
+    if vim.fn.isdirectory(root) == 1 then
+      local versions = vim.fn.glob(root .. "/*", false, true)
+      table.sort(versions)
+      local version_dir = versions[#versions]
+      if version_dir and vim.fn.isdirectory(version_dir) == 1 then
+        local target_dir = first_existing_path({
+          version_dir .. "/x86_64-w64-mingw32",
+          version_dir .. "/x86_64-pc-msys",
+        })
+        return version_dir, target_dir
+      end
+    end
+  end
+end
+
+local function clangd_compile_flags()
+  local cpp_standard = vim.g.clangd_cpp_standard or "c++17"
+  local flags = { "-std=" .. cpp_standard }
+
+  local stdlib = vim.g.clangd_stdlib_include or vim.env.NVIM_CLANGD_STDLIB_INCLUDE
+  if stdlib and stdlib ~= "" and vim.fn.isdirectory(vim.fn.expand(stdlib)) == 1 then
+    flags[#flags + 1] = "-isystem" .. vim.fn.expand(stdlib)
+    return flags
+  end
+
+  local version_dir, target_dir = detect_mingw_libstdcpp_includes()
+  if version_dir then
+    flags[#flags + 1] = "-isystem" .. version_dir
+  end
+  if target_dir then
+    flags[#flags + 1] = "-isystem" .. target_dir
+  end
+
+  return flags
+end
+
+local function clangd_query_driver_arg()
+  local user_value = vim.g.clangd_query_driver or vim.env.NVIM_CLANGD_QUERY_DRIVER
+  if user_value and user_value ~= "" then
+    return "--query-driver=" .. user_value
+  end
+
+  local drivers = {}
+  local function add_driver(path)
+    if path and path ~= "" and vim.fn.executable(path) == 1 then
+      drivers[#drivers + 1] = path
+    end
+  end
+
+  -- Prefer compilers detected from PATH; this handles custom install locations (e.g. D:/Program Files/...)
+  add_driver(vim.fn.exepath("g++"))
+  add_driver(vim.fn.exepath("gcc"))
+  add_driver(vim.fn.exepath("clang++"))
+  add_driver(vim.fn.exepath("clang"))
+
+  local candidates = {
+    "C:/msys64/ucrt64/bin/g++.exe",
+    "C:/msys64/mingw64/bin/g++.exe",
+    "C:/msys64/clang64/bin/clang++.exe",
+    "C:/Program Files/LLVM/bin/clang++.exe",
+    "D:/Program Files/mingw-w64/mingw64/bin/g++.exe",
+    "D:/Program Files/LLVM/bin/clang++.exe",
+  }
+  for _, path in ipairs(candidates) do
+    add_driver(path)
+  end
+  if #drivers > 0 then
+    local uniq = {}
+    local dedup = {}
+    for _, driver in ipairs(drivers) do
+      if not uniq[driver] then
+        uniq[driver] = true
+        dedup[#dedup + 1] = driver
+      end
+    end
+    return "--query-driver=" .. table.concat(dedup, ",")
+  end
+end
+
 return {
-  -- 先确保 nvim-cmp 及其依赖已安装
-  {
-    "hrsh7th/nvim-cmp",
-    dependencies = {
-      "hrsh7th/cmp-nvim-lsp", -- LSP 补全源
-      "hrsh7th/cmp-buffer",   -- 缓冲区补全源
-      "hrsh7th/cmp-path",     -- 路径补全源
-      "hrsh7th/cmp-cmdline",  -- 命令行补全源
-      "L3MON4D3/LuaSnip",     -- 代码片段引擎
-      "saadparwaiz1/cmp_luasnip", -- 连接 Luasnip 和 nvim-cmp
-    },
-    config = function()
-      local cmp = require("cmp")
-      local luasnip = require("luasnip")
-
-      -- 基础 cmp 配置（保证补全功能可用）
-      cmp.setup({
-        snippet = {
-          expand = function(args)
-            luasnip.lsp_expand(args.body)
-          end,
-        },
-        mapping = cmp.mapping.preset.insert({
-          ["<C-b>"] = cmp.mapping.scroll_docs(-4),
-          ["<C-f>"] = cmp.mapping.scroll_docs(4),
-          ["<C-Space>"] = cmp.mapping.complete(),
-          ["<C-e>"] = cmp.mapping.abort(),
-          ["<CR>"] = cmp.mapping.confirm({ select = true }), -- 回车确认补全
-        }),
-        sources = cmp.config.sources({
-          { name = "nvim_lsp" }, -- LSP 补全（核心）
-          { name = "luasnip" },  -- 代码片段
-          { name = "buffer" },   -- 缓冲区文字
-          { name = "path" },     -- 文件路径
-        }),
-      })
-    end,
-  },
-
-  -- clangd 增强插件核心配置
   "p00f/clangd_extensions.nvim",
   dependencies = {
     "neovim/nvim-lspconfig",
     "williamboman/mason-lspconfig.nvim",
-    "hrsh7th/cmp-nvim-lsp", -- 现在依赖的 cmp-nvim-lsp 已有前置依赖
+    "saghen/blink.cmp",
   },
   ft = { "c", "cpp", "objc", "objcpp", "cuda", "proto" },
   config = function()
     local lspconfig = require("lspconfig")
-    local cmp_nvim_lsp = require("cmp_nvim_lsp") -- 现在能正常找到 cmp 模块了
+    local blink_cmp = require("blink.cmp")
 
-    -- ===================== 核心配置项（请修改这里！）=====================
-    local stdcpp_h_include_path = "/c/MinGW/lib/gcc/mingw32/6.3.0/include/c++/mingw32"
-    local cpp_standard = "c++17"
-
-    -- ===================== 固定配置（无需修改）=====================
-    local capabilities = cmp_nvim_lsp.default_capabilities()
+    local capabilities = blink_cmp.get_lsp_capabilities()
     capabilities.offsetEncoding = { "utf-16" }
+
+    local cmd = {
+      "clangd",
+      "--background-index",
+      "--clang-tidy",
+      "--completion-style=detailed",
+      "--header-insertion=iwyu",
+      "--offset-encoding=utf-16",
+      "--all-scopes-completion",
+      "--cross-file-rename",
+    }
+    local query_driver = clangd_query_driver_arg()
+    if query_driver then
+      cmd[#cmd + 1] = query_driver
+    end
 
     lspconfig.clangd.setup({
       capabilities = capabilities,
-      cmd = {
-        "clangd",
-        "--background-index",
-        "--clang-tidy",
-        "--completion-style=detailed",
-        "--header-insertion=iwyu",
-        "--offset-encoding=utf-16",
-        "--all-scopes-completion",
-        "--cross-file-rename",
-      },
+      cmd = cmd,
       init_options = {
         clangdFileStatus = true,
-        compileFlags = {
-          "-std=" .. cpp_standard,
-          "-I" .. stdcpp_h_include_path,
-        },
+        compileFlags = clangd_compile_flags(),
       },
       on_attach = function(client, bufnr)
         require("clangd_extensions").setup({
@@ -101,7 +155,6 @@ return {
           },
         })
 
-        -- 快捷键配置
         local map = vim.keymap.set
         map("n", "<leader>ch", "<cmd>ClangdSwitchSourceHeader<CR>", { buffer = bufnr, desc = "Clangd: 切换头文件/源文件" })
         map("n", "<leader>ct", "<cmd>ClangdTypeHierarchy<CR>", { buffer = bufnr, desc = "Clangd: 类型层次视图" })
